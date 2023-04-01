@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -14,11 +13,11 @@ import (
 	"strconv"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/quic-go/internal/protocol"
-	"github.com/quic-go/quic-go/internal/testdata"
-	"golang.org/x/sync/errgroup"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -68,7 +67,7 @@ var _ = Describe("HTTP tests", func() {
 
 		server = &http3.Server{
 			Handler:    mux,
-			TLSConfig:  testdata.GetTLSConfig(),
+			TLSConfig:  getTLSConfig(),
 			QuicConfig: getQuicConfig(nil),
 		}
 
@@ -95,9 +94,7 @@ var _ = Describe("HTTP tests", func() {
 	BeforeEach(func() {
 		client = &http.Client{
 			Transport: &http3.RoundTripper{
-				TLSClientConfig: &tls.Config{
-					RootCAs: testdata.GetRootCA(),
-				},
+				TLSClientConfig:    getTLSClientConfig(),
 				DisableCompression: true,
 				QuicConfig:         getQuicConfig(&quic.Config{MaxIdleTimeout: 10 * time.Second}),
 			},
@@ -369,7 +366,7 @@ var _ = Describe("HTTP tests", func() {
 		if version == protocol.VersionDraft29 {
 			Skip("This test only works on RFC versions")
 		}
-		tlsConf := testdata.GetTLSConfig()
+		tlsConf := getTLSConfig()
 		tlsConf.NextProtos = []string{"h3"}
 		ln, err := quic.ListenAddr("localhost:0", tlsConf, nil)
 		Expect(err).ToNot(HaveOccurred())
