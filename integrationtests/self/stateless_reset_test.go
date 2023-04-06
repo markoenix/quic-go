@@ -24,9 +24,14 @@ var _ = Describe("Stateless Resets", func() {
 		It(fmt.Sprintf("sends and recognizes stateless resets, for %d byte connection IDs", connIDLen), func() {
 			var statelessResetKey quic.StatelessResetKey
 			rand.Read(statelessResetKey[:])
-			serverConfig := getQuicConfig(&quic.Config{StatelessResetKey: &statelessResetKey})
 
-			ln, err := quic.ListenAddr("localhost:0", getTLSConfig(), serverConfig)
+			c, err := net.ListenUDP("udp", nil)
+			Expect(err).ToNot(HaveOccurred())
+			tr := &quic.Transport{
+				Conn:              c,
+				StatelessResetKey: &statelessResetKey,
+			}
+			ln, err := tr.Listen(getTLSConfig(), getQuicConfig(nil))
 			Expect(err).ToNot(HaveOccurred())
 			serverPort := ln.Addr().(*net.UDPAddr).Port
 
@@ -41,7 +46,8 @@ var _ = Describe("Stateless Resets", func() {
 				_, err = str.Write([]byte("foobar"))
 				Expect(err).ToNot(HaveOccurred())
 				<-closeServer
-				ln.Close()
+				Expect(ln.Close()).To(Succeed())
+				Expect(tr.Close()).To(Succeed())
 			}()
 
 			var drop atomic.Bool
@@ -76,11 +82,13 @@ var _ = Describe("Stateless Resets", func() {
 			close(closeServer)
 			time.Sleep(100 * time.Millisecond)
 
-			ln2, err := quic.ListenAddr(
-				fmt.Sprintf("localhost:%d", serverPort),
-				getTLSConfig(),
-				serverConfig,
-			)
+			// We need to create a new Transport here, since the old one is still sending out
+			// CONNECTION_CLOSE packets for (recently) closed connections).
+			tr2 := &quic.Transport{
+				Conn:              c,
+				StatelessResetKey: &statelessResetKey,
+			}
+			ln2, err := tr2.Listen(getTLSConfig(), getQuicConfig(nil))
 			Expect(err).ToNot(HaveOccurred())
 			drop.Store(false)
 

@@ -124,7 +124,6 @@ var _ = Describe("Server", func() {
 			HandshakeIdleTimeout:     1337 * time.Hour,
 			MaxIdleTimeout:           42 * time.Minute,
 			KeepAlivePeriod:          5 * time.Second,
-			StatelessResetKey:        &StatelessResetKey{'f', 'o', 'o', 'b', 'a', 'r'},
 			RequireAddressValidation: requireAddrVal,
 		}
 		ln, err := Listen(conn, tlsConf, &config)
@@ -136,7 +135,6 @@ var _ = Describe("Server", func() {
 		Expect(server.config.MaxIdleTimeout).To(Equal(42 * time.Minute))
 		Expect(reflect.ValueOf(server.config.RequireAddressValidation)).To(Equal(reflect.ValueOf(requireAddrVal)))
 		Expect(server.config.KeepAlivePeriod).To(Equal(5 * time.Second))
-		Expect(server.config.StatelessResetKey).To(Equal(&StatelessResetKey{'f', 'o', 'o', 'b', 'a', 'r'}))
 		// stop the listener
 		Expect(ln.Close()).To(Succeed())
 	})
