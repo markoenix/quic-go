@@ -1,15 +1,12 @@
 package quic
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
 	"errors"
 	"net"
 	"reflect"
-	"runtime/pprof"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,16 +21,9 @@ import (
 	"github.com/quic-go/quic-go/logging"
 
 	"github.com/golang/mock/gomock"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-func areServersRunning() bool {
-	var b bytes.Buffer
-	pprof.Lookup("goroutine").WriteTo(&b, 1)
-	return strings.Contains(b.String(), "quic-go.(*baseServer).run")
-}
 
 var _ = Describe("Server", func() {
 	var (
@@ -99,10 +89,6 @@ var _ = Describe("Server", func() {
 		conn.EXPECT().ReadFrom(gomock.Any()).Do(func(_ []byte) { <-(make(chan struct{})) }).MaxTimes(1)
 		tlsConf = testdata.GetTLSConfig()
 		tlsConf.NextProtos = []string{"proto1"}
-	})
-
-	AfterEach(func() {
-		Eventually(areServersRunning).Should(BeFalse())
 	})
 
 	It("errors when no tls.Config is given", func() {
@@ -193,7 +179,6 @@ var _ = Describe("Server", func() {
 		})
 
 		AfterEach(func() {
-			phm.EXPECT().CloseServer().MaxTimes(1)
 			serv.Close()
 		})
 
@@ -753,8 +738,7 @@ var _ = Describe("Server", func() {
 				Consistently(done).ShouldNot(BeClosed())
 
 				// make the go routine return
-				phm.EXPECT().CloseServer()
-				conn.EXPECT().getPerspective().MaxTimes(2) // once for every conn ID
+				conn.EXPECT().getPerspective().MaxTimes(2) // initOnce for every conn ID
 				Expect(serv.Close()).To(Succeed())
 				Eventually(done).Should(BeClosed())
 			})
@@ -1064,7 +1048,6 @@ var _ = Describe("Server", func() {
 		})
 
 		AfterEach(func() {
-			phm.EXPECT().CloseServer().MaxTimes(1)
 			serv.Close()
 		})
 
@@ -1234,8 +1217,7 @@ var _ = Describe("Server", func() {
 			Consistently(done).ShouldNot(BeClosed())
 
 			// make the go routine return
-			phm.EXPECT().CloseServer()
-			conn.EXPECT().getPerspective().MaxTimes(2) // once for every conn ID
+			conn.EXPECT().getPerspective().MaxTimes(2) // initOnce for every conn ID
 			Expect(serv.Close()).To(Succeed())
 			Eventually(done).Should(BeClosed())
 		})

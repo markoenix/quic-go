@@ -45,32 +45,58 @@ var generateConnectionIDForInitial = protocol.GenerateConnectionIDForInitial
 
 // DialAddr establishes a new QUIC connection to a server.
 // It uses a new UDP connection and closes this connection when the QUIC connection is closed.
-// The hostname for SNI is taken from the given address.
-func DialAddr(ctx context.Context, addr string, tlsConf *tls.Config, config *Config) (Connection, error) {
-	return dialAddrContext(ctx, addr, tlsConf, config, false)
-}
-
-// DialAddrEarly establishes a new 0-RTT QUIC connection to a server.
-// It uses a new UDP connection and closes this connection when the QUIC connection is closed.
-func DialAddrEarly(ctx context.Context, addr string, tlsConf *tls.Config, config *Config) (EarlyConnection, error) {
-	conn, err := dialAddrContext(ctx, addr, tlsConf, config, true)
-	if err != nil {
-		return nil, err
-	}
-	utils.Logger.WithPrefix(utils.DefaultLogger, "client").Debugf("Returning early connection")
-	return conn, nil
-}
-
-func dialAddrContext(ctx context.Context, addr string, tlsConf *tls.Config, config *Config, use0RTT bool) (quicConn, error) {
-	udpAddr, err := net.ResolveUDPAddr("udp", addr)
-	if err != nil {
-		return nil, err
-	}
+func DialAddr(ctx context.Context, addr string, tlsConf *tls.Config, conf *Config) (Connection, error) {
 	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
 	if err != nil {
 		return nil, err
 	}
-	return dialContext(ctx, udpConn, udpAddr, tlsConf, config, use0RTT, true)
+	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return nil, err
+	}
+	dl, err := setupTransport(udpConn, tlsConf, true)
+	if err != nil {
+		return nil, err
+	}
+	return dl.Dial(ctx, udpAddr, tlsConf, conf)
+}
+
+// DialAddrEarly establishes a new 0-RTT QUIC connection to a server.
+// It uses a new UDP connection and closes this connection when the QUIC connection is closed.
+func DialAddrEarly(ctx context.Context, addr string, tlsConf *tls.Config, conf *Config) (EarlyConnection, error) {
+	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
+	if err != nil {
+		return nil, err
+	}
+	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return nil, err
+	}
+	dl, err := setupTransport(udpConn, tlsConf, true)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := dl.DialEarly(ctx, udpAddr, tlsConf, conf)
+	if err != nil {
+		dl.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+
+// DialEarly establishes a new 0-RTT QUIC connection to a server using a net.PacketConn using the provided context.
+// See DialEarly for details.
+func DialEarly(ctx context.Context, c net.PacketConn, addr net.Addr, tlsConf *tls.Config, conf *Config) (EarlyConnection, error) {
+	dl, err := setupTransport(c, tlsConf, false)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := dl.DialEarly(ctx, addr, tlsConf, conf)
+	if err != nil {
+		dl.Close()
+		return nil, err
+	}
+	return conn, nil
 }
 
 // Dial establishes a new QUIC connection to a server using a net.PacketConn. If
@@ -78,34 +104,41 @@ func dialAddrContext(ctx context.Context, addr string, tlsConf *tls.Config, conf
 // does), ECN and packet info support will be enabled. In this case, ReadMsgUDP
 // and WriteMsgUDP will be used instead of ReadFrom and WriteTo to read/write
 // packets.
-// The same PacketConn can be used for multiple calls to Dial and Listen.
-// QUIC connection IDs are used for demultiplexing the different connections.
 // The tls.Config must define an application protocol (using NextProtos).
-func Dial(ctx context.Context, pconn net.PacketConn, addr net.Addr, tlsConf *tls.Config, config *Config) (Connection, error) {
-	return dialContext(ctx, pconn, addr, tlsConf, config, false, false)
-}
-
-// DialEarly establishes a new 0-RTT QUIC connection to a server using a net.PacketConn.
-// The same PacketConn can be used for multiple calls to Dial and Listen,
-// QUIC connection IDs are used for demultiplexing the different connections.
-// The tls.Config must define an application protocol (using NextProtos).
-func DialEarly(ctx context.Context, pconn net.PacketConn, addr net.Addr, tlsConf *tls.Config, config *Config) (EarlyConnection, error) {
-	return dialContext(ctx, pconn, addr, tlsConf, config, true, false)
-}
-
-func dialContext(ctx context.Context, pconn net.PacketConn, addr net.Addr, tlsConf *tls.Config, config *Config, use0RTT bool, createdPacketConn bool) (quicConn, error) {
-	if tlsConf == nil {
-		return nil, errors.New("quic: tls.Config not set")
-	}
-	if err := validateConfig(config); err != nil {
-		return nil, err
-	}
-	config = populateClientConfig(config, createdPacketConn)
-	packetHandlers, err := getMultiplexer().AddConn(pconn, config.ConnectionIDGenerator.ConnectionIDLen(), config.StatelessResetKey, config.Tracer)
+func Dial(ctx context.Context, c net.PacketConn, addr net.Addr, tlsConf *tls.Config, conf *Config) (Connection, error) {
+	dl, err := setupTransport(c, tlsConf, false)
 	if err != nil {
 		return nil, err
 	}
-	c, err := newClient(pconn, addr, config, tlsConf, use0RTT, createdPacketConn)
+	conn, err := dl.Dial(ctx, addr, tlsConf, conf)
+	if err != nil {
+		dl.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+
+func setupTransport(c net.PacketConn, tlsConf *tls.Config, createdPacketConn bool) (*Transport, error) {
+	if tlsConf == nil {
+		return nil, errors.New("quic: tls.Config not set")
+	}
+	return &Transport{
+		Conn:        c,
+		createdConn: createdPacketConn,
+	}, nil
+}
+
+func dial(
+	ctx context.Context,
+	conn net.PacketConn,
+	packetHandlers packetHandlerManager,
+	addr net.Addr,
+	tlsConf *tls.Config,
+	config *Config,
+	use0RTT bool,
+	createdPacketConn bool,
+) (quicConn, error) {
+	c, err := newClient(conn, addr, config, tlsConf, use0RTT, createdPacketConn)
 	if err != nil {
 		return nil, err
 	}
@@ -179,14 +212,7 @@ func (c *client) dial(ctx context.Context) error {
 	c.packetHandlers.Add(c.srcConnID, c.conn)
 
 	errorChan := make(chan error, 1)
-	go func() {
-		err := c.conn.run() // returns as soon as the connection is closed
-
-		if e := (&errCloseForRecreating{}); !errors.As(err, &e) && c.createdPacketConn {
-			c.packetHandlers.Destroy()
-		}
-		errorChan <- err
-	}()
+	go func() { errorChan <- c.conn.run() /* returns as soon as the connection is closed */ }()
 
 	// only set when we're using 0-RTT
 	// Otherwise, earlyConnChan will be nil. Receiving from a nil chan blocks forever.

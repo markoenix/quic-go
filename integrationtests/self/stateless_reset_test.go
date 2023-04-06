@@ -2,7 +2,6 @@ package self_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -100,8 +99,7 @@ var _ = Describe("Stateless Resets", func() {
 				_, serr = str.Read([]byte{0})
 			}
 			Expect(serr).To(HaveOccurred())
-			statelessResetErr := &quic.StatelessResetError{}
-			Expect(errors.As(serr, &statelessResetErr)).To(BeTrue())
+			Expect(serr).To(BeAssignableToTypeOf(&quic.StatelessResetError{}))
 			Expect(ln2.Close()).To(Succeed())
 			Eventually(acceptStopped).Should(BeClosed())
 		})
