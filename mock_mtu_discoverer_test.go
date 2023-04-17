@@ -36,6 +36,20 @@ func (m *MockMtuDiscoverer) EXPECT() *MockMtuDiscovererMockRecorder {
 	return m.recorder
 }
 
+// CurrentSize mocks base method.
+func (m *MockMtuDiscoverer) CurrentSize() protocol.ByteCount {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CurrentSize")
+	ret0, _ := ret[0].(protocol.ByteCount)
+	return ret0
+}
+
+// CurrentSize indicates an expected call of CurrentSize.
+func (mr *MockMtuDiscovererMockRecorder) CurrentSize() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentSize", reflect.TypeOf((*MockMtuDiscoverer)(nil).CurrentSize))
+}
+
 // GetPing mocks base method.
 func (m *MockMtuDiscoverer) GetPing() (ackhandler.Frame, protocol.ByteCount) {
 	m.ctrl.T.Helper()
@@ -63,4 +77,16 @@ func (m *MockMtuDiscoverer) ShouldSendProbe(now time.Time) bool {
 func (mr *MockMtuDiscovererMockRecorder) ShouldSendProbe(now interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShouldSendProbe", reflect.TypeOf((*MockMtuDiscoverer)(nil).ShouldSendProbe), now)
+}
+
+// Start mocks base method.
+func (m *MockMtuDiscoverer) Start(maxPacketSize protocol.ByteCount) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Start", maxPacketSize)
+}
+
+// Start indicates an expected call of Start.
+func (mr *MockMtuDiscovererMockRecorder) Start(maxPacketSize interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockMtuDiscoverer)(nil).Start), maxPacketSize)
 }
