@@ -28,6 +28,9 @@ type rawConn interface {
 	WritePacket(b []byte, addr net.Addr, oob []byte) (int, error)
 	LocalAddr() net.Addr
 	io.Closer
+
+	// SupportsGSO says if GSO (Generic Segmentation Offload) is supported.
+	SupportsGSO() bool
 }
 
 type closePacket struct {

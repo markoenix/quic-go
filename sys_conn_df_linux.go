@@ -4,12 +4,16 @@ package quic
 
 import (
 	"errors"
+	"log"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 
 	"github.com/quic-go/quic-go/internal/utils"
 )
+
+// UDP_SEGMENT controls GSO (Generic Segmentation Offload)
+const UDP_SEGMENT = 103
 
 func setDF(rawConn syscall.RawConn) error {
 	// Enabling IP_MTU_DISCOVER will force the kernel to return "sendto: message too long"
@@ -32,6 +36,20 @@ func setDF(rawConn syscall.RawConn) error {
 		return errors.New("setting DF failed for both IPv4 and IPv6")
 	}
 	return nil
+}
+
+func maybeSetGSO(rawConn syscall.RawConn) bool {
+	var setErr error
+	if err := rawConn.Control(func(fd uintptr) {
+		setErr = unix.SetsockoptInt(int(fd), syscall.IPPROTO_UDP, UDP_SEGMENT, 1)
+	}); err != nil {
+		setErr = err
+	}
+	if setErr != nil {
+		log.Println("failed to enable GSO")
+		return false
+	}
+	return true
 }
 
 func isMsgSizeErr(err error) bool {
