@@ -124,9 +124,10 @@ var _ = Describe("Transport", func() {
 		packetChan := make(chan packetToRead)
 		tracer := mocklogging.NewMockTracer(mockCtrl)
 		tr := &Transport{
-			Conn: newMockPacketConn(packetChan),
+			Conn:               newMockPacketConn(packetChan),
+			ConnectionIDLength: 10,
 		}
-		tr.init(&Config{Tracer: tracer, ConnectionIDLength: 10})
+		tr.init(&Config{Tracer: tracer})
 		dropped := make(chan struct{})
 		tracer.EXPECT().DroppedPacket(addr, logging.PacketTypeNotDetermined, protocol.ByteCount(4), logging.PacketDropHeaderParseError).Do(func(net.Addr, logging.PacketType, protocol.ByteCount, logging.PacketDropReason) { close(dropped) })
 		packetChan <- packetToRead{

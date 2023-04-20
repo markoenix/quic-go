@@ -66,9 +66,10 @@ type Transport struct {
 
 	closeQueue chan closePacket
 
-	listening   chan struct{} // is closed when listen returns
-	closed      bool
-	createdConn bool
+	listening           chan struct{} // is closed when listen returns
+	closed              bool
+	createdConn         bool
+	allowZeroLenConnIDs bool
 
 	logger utils.Logger
 }
@@ -90,7 +91,7 @@ func (t *Transport) Listen(tlsConf *tls.Config, conf *Config) (*Listener, error)
 	if err := t.init(conf); err != nil {
 		return nil, err
 	}
-	s, err := newServer(t.conn, t.handlerMap, tlsConf, conf, t.closeServer, false)
+	s, err := newServer(t.conn, t.handlerMap, t.ConnectionIDGenerator, tlsConf, conf, t.closeServer, false)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +116,7 @@ func (t *Transport) ListenEarly(tlsConf *tls.Config, conf *Config) (*EarlyListen
 	if err := t.init(conf); err != nil {
 		return nil, err
 	}
-	s, err := newServer(t.conn, t.handlerMap, tlsConf, conf, t.closeServer, true)
+	s, err := newServer(t.conn, t.handlerMap, t.ConnectionIDGenerator, tlsConf, conf, t.closeServer, true)
 	if err != nil {
 		return nil, err
 	}
@@ -128,11 +129,11 @@ func (t *Transport) Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config
 	if err := validateConfig(conf); err != nil {
 		return nil, err
 	}
-	conf = populateClientConfig(conf, t.createdConn)
+	conf = populateConfig(conf)
 	if err := t.init(conf); err != nil {
 		return nil, err
 	}
-	return dial(ctx, t.Conn, t.handlerMap, addr, tlsConf, conf, false, t.createdConn)
+	return dial(ctx, t.Conn, t.ConnectionIDGenerator, t.handlerMap, addr, tlsConf, conf, false, t.createdConn)
 }
 
 // DialEarly dials a new connection, attempting to use 0-RTT if possible.
@@ -140,11 +141,11 @@ func (t *Transport) DialEarly(ctx context.Context, addr net.Addr, tlsConf *tls.C
 	if err := validateConfig(conf); err != nil {
 		return nil, err
 	}
-	conf = populateClientConfig(conf, t.createdConn)
+	conf = populateConfig(conf)
 	if err := t.init(conf); err != nil {
 		return nil, err
 	}
-	return dial(ctx, t.Conn, t.handlerMap, addr, tlsConf, conf, true, t.createdConn)
+	return dial(ctx, t.Conn, t.ConnectionIDGenerator, t.handlerMap, addr, tlsConf, conf, true, t.createdConn)
 }
 
 func setReceiveBuffer(c net.PacketConn, logger utils.Logger) error {
@@ -191,9 +192,6 @@ func (t *Transport) init(conf *Config) error {
 		}
 
 		t.Tracer = conf.Tracer
-		t.ConnectionIDLength = conf.ConnectionIDLength
-		t.ConnectionIDGenerator = conf.ConnectionIDGenerator
-
 		t.logger = utils.DefaultLogger // TODO: make this configurable
 		t.conn = conn
 		t.handlerMap = newPacketHandlerMap(t.StatelessResetKey, t.enqueueClosePacket, t.logger)
@@ -204,7 +202,12 @@ func (t *Transport) init(conf *Config) error {
 		if t.ConnectionIDGenerator != nil {
 			t.connIDLen = t.ConnectionIDGenerator.ConnectionIDLen()
 		} else {
-			t.connIDLen = t.ConnectionIDLength
+			connIDLen := t.ConnectionIDLength
+			if t.ConnectionIDLength == 0 && !t.allowZeroLenConnIDs {
+				connIDLen = protocol.DefaultConnectionIDLength
+			}
+			t.connIDLen = connIDLen
+			t.ConnectionIDGenerator = &protocol.DefaultConnectionIDGenerator{ConnLen: t.connIDLen}
 		}
 
 		go t.listen(conn)

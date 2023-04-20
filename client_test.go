@@ -39,6 +39,7 @@ var _ = Describe("Client", func() {
 			runner connRunner,
 			destConnID protocol.ConnectionID,
 			srcConnID protocol.ConnectionID,
+			connIDGenerator ConnectionIDGenerator,
 			conf *Config,
 			tlsConf *tls.Config,
 			initialPacketNumber protocol.PacketNumber,
@@ -114,6 +115,7 @@ var _ = Describe("Client", func() {
 				_ connRunner,
 				_ protocol.ConnectionID,
 				_ protocol.ConnectionID,
+				_ ConnectionIDGenerator,
 				_ *Config,
 				_ *tls.Config,
 				_ protocol.PacketNumber,
@@ -132,7 +134,7 @@ var _ = Describe("Client", func() {
 				conn.EXPECT().HandshakeComplete().Return(c)
 				return conn
 			}
-			cl, err := newClient(packetConn, addr, populateClientConfig(config, true), tlsConf, false, false)
+			cl, err := newClient(packetConn, addr, &protocol.DefaultConnectionIDGenerator{}, populateConfig(config), tlsConf, false, false)
 			Expect(err).ToNot(HaveOccurred())
 			cl.packetHandlers = manager
 			Expect(cl).ToNot(BeNil())
@@ -150,6 +152,7 @@ var _ = Describe("Client", func() {
 				runner connRunner,
 				_ protocol.ConnectionID,
 				_ protocol.ConnectionID,
+				_ ConnectionIDGenerator,
 				_ *Config,
 				_ *tls.Config,
 				_ protocol.PacketNumber,
@@ -168,7 +171,7 @@ var _ = Describe("Client", func() {
 				return conn
 			}
 
-			cl, err := newClient(packetConn, addr, populateClientConfig(config, true), tlsConf, true, false)
+			cl, err := newClient(packetConn, addr, &protocol.DefaultConnectionIDGenerator{}, populateConfig(config), tlsConf, true, false)
 			Expect(err).ToNot(HaveOccurred())
 			cl.packetHandlers = manager
 			Expect(cl).ToNot(BeNil())
@@ -186,6 +189,7 @@ var _ = Describe("Client", func() {
 				_ connRunner,
 				_ protocol.ConnectionID,
 				_ protocol.ConnectionID,
+				_ ConnectionIDGenerator,
 				_ *Config,
 				_ *tls.Config,
 				_ protocol.PacketNumber,
@@ -202,7 +206,7 @@ var _ = Describe("Client", func() {
 				conn.EXPECT().earlyConnReady().Return(make(chan struct{}))
 				return conn
 			}
-			cl, err := newClient(packetConn, addr, populateClientConfig(config, true), tlsConf, true, false)
+			cl, err := newClient(packetConn, addr, &protocol.DefaultConnectionIDGenerator{}, populateConfig(config), tlsConf, true, false)
 			Expect(err).ToNot(HaveOccurred())
 			cl.packetHandlers = manager
 			Expect(cl).ToNot(BeNil())
@@ -217,16 +221,14 @@ var _ = Describe("Client", func() {
 					MaxIdleTimeout:        42 * time.Hour,
 					MaxIncomingStreams:    1234,
 					MaxIncomingUniStreams: 4321,
-					ConnectionIDLength:    13,
 					TokenStore:            tokenStore,
 					EnableDatagrams:       true,
 				}
-				c := populateClientConfig(config, false)
+				c := populateConfig(config)
 				Expect(c.HandshakeIdleTimeout).To(Equal(1337 * time.Minute))
 				Expect(c.MaxIdleTimeout).To(Equal(42 * time.Hour))
 				Expect(c.MaxIncomingStreams).To(BeEquivalentTo(1234))
 				Expect(c.MaxIncomingUniStreams).To(BeEquivalentTo(4321))
-				Expect(c.ConnectionIDLength).To(Equal(13))
 				Expect(c.TokenStore).To(Equal(tokenStore))
 				Expect(c.EnableDatagrams).To(BeTrue())
 			})
@@ -236,7 +238,7 @@ var _ = Describe("Client", func() {
 					MaxIncomingStreams:    -1,
 					MaxIncomingUniStreams: 4321,
 				}
-				c := populateClientConfig(config, false)
+				c := populateConfig(config)
 				Expect(c.MaxIncomingStreams).To(BeZero())
 				Expect(c.MaxIncomingUniStreams).To(BeEquivalentTo(4321))
 			})
@@ -246,18 +248,13 @@ var _ = Describe("Client", func() {
 					MaxIncomingStreams:    1234,
 					MaxIncomingUniStreams: -1,
 				}
-				c := populateClientConfig(config, false)
+				c := populateConfig(config)
 				Expect(c.MaxIncomingStreams).To(BeEquivalentTo(1234))
 				Expect(c.MaxIncomingUniStreams).To(BeZero())
 			})
 
-			It("uses 0-byte connection IDs when dialing an address", func() {
-				c := populateClientConfig(&Config{}, true)
-				Expect(c.ConnectionIDLength).To(BeZero())
-			})
-
 			It("fills in default values if options are not set in the Config", func() {
-				c := populateClientConfig(&Config{}, false)
+				c := populateConfig(&Config{})
 				Expect(c.Versions).To(Equal(protocol.SupportedVersions))
 				Expect(c.HandshakeIdleTimeout).To(Equal(protocol.DefaultHandshakeIdleTimeout))
 				Expect(c.MaxIdleTimeout).To(Equal(protocol.DefaultIdleTimeout))
