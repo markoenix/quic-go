@@ -26,8 +26,7 @@ func (n nullMultiplexer) RemoveConn(indexableConn) error { return nil }
 var _ = Describe("Client", func() {
 	var (
 		cl              *client
-		packetConn      *MockPacketConn
-		addr            net.Addr
+		packetConn      *MockSendConn
 		connID          protocol.ConnectionID
 		origMultiplexer multiplexer
 		tlsConf         *tls.Config
@@ -62,14 +61,14 @@ var _ = Describe("Client", func() {
 		tr.EXPECT().TracerForConnection(gomock.Any(), protocol.PerspectiveClient, gomock.Any()).Return(tracer).MaxTimes(1)
 		config = &Config{Tracer: tr, Versions: []protocol.VersionNumber{protocol.Version1}}
 		Eventually(areConnsRunning).Should(BeFalse())
-		addr = &net.UDPAddr{IP: net.IPv4(192, 168, 100, 200), Port: 1337}
-		packetConn = NewMockPacketConn(mockCtrl)
+		packetConn = NewMockSendConn(mockCtrl)
 		packetConn.EXPECT().LocalAddr().Return(&net.UDPAddr{}).AnyTimes()
+		packetConn.EXPECT().RemoteAddr().Return(&net.UDPAddr{}).AnyTimes()
 		cl = &client{
 			srcConnID:  connID,
 			destConnID: connID,
 			version:    protocol.Version1,
-			sconn:      newSendPconn(packetConn, addr),
+			sendConn:   packetConn,
 			tracer:     tracer,
 			logger:     utils.DefaultLogger,
 		}
@@ -134,7 +133,7 @@ var _ = Describe("Client", func() {
 				conn.EXPECT().HandshakeComplete().Return(c)
 				return conn
 			}
-			cl, err := newClient(packetConn, addr, &protocol.DefaultConnectionIDGenerator{}, populateConfig(config), tlsConf, false, false)
+			cl, err := newClient(packetConn, &protocol.DefaultConnectionIDGenerator{}, populateConfig(config), tlsConf, false)
 			Expect(err).ToNot(HaveOccurred())
 			cl.packetHandlers = manager
 			Expect(cl).ToNot(BeNil())
@@ -171,7 +170,7 @@ var _ = Describe("Client", func() {
 				return conn
 			}
 
-			cl, err := newClient(packetConn, addr, &protocol.DefaultConnectionIDGenerator{}, populateConfig(config), tlsConf, true, false)
+			cl, err := newClient(packetConn, &protocol.DefaultConnectionIDGenerator{}, populateConfig(config), tlsConf, true)
 			Expect(err).ToNot(HaveOccurred())
 			cl.packetHandlers = manager
 			Expect(cl).ToNot(BeNil())
@@ -206,7 +205,7 @@ var _ = Describe("Client", func() {
 				conn.EXPECT().earlyConnReady().Return(make(chan struct{}))
 				return conn
 			}
-			cl, err := newClient(packetConn, addr, &protocol.DefaultConnectionIDGenerator{}, populateConfig(config), tlsConf, true, false)
+			cl, err := newClient(packetConn, &protocol.DefaultConnectionIDGenerator{}, populateConfig(config), tlsConf, true)
 			Expect(err).ToNot(HaveOccurred())
 			cl.packetHandlers = manager
 			Expect(cl).ToNot(BeNil())
