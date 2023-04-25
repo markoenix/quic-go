@@ -596,6 +596,21 @@ func (s *baseServer) handleInitialImpl(p *receivedPacket, hdr *wire.Header) erro
 				connID,
 			)
 		}
+		config := s.config
+		if s.config.GetConfigForClient != nil {
+			conf, err := s.config.GetConfigForClient(&ClientHelloInfo{RemoteAddr: p.remoteAddr})
+			if err != nil {
+				s.logger.Debugf("Rejecting new connection due to GetConfigForClient callback")
+				go func() {
+					defer p.buffer.Release()
+					if err := s.sendConnectionRefused(p.remoteAddr, hdr, p.info); err != nil {
+						s.logger.Debugf("Error rejecting connection: %s", err)
+					}
+				}()
+				return nil
+			}
+			config = conf
+		}
 		conn = s.newConn(
 			newSendConn(s.conn, p.remoteAddr, p.info),
 			s.connHandler,
@@ -606,7 +621,7 @@ func (s *baseServer) handleInitialImpl(p *receivedPacket, hdr *wire.Header) erro
 			connID,
 			s.connIDGenerator,
 			s.connHandler.GetStatelessResetToken(connID),
-			s.config,
+			config,
 			s.tlsConf,
 			s.tokenGenerator,
 			clientAddrIsValid,
